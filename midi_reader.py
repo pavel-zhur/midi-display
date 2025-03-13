@@ -8,64 +8,17 @@ from mido import Message
 import threading
 from time import time, sleep
 from logic.note_tracker import NoteTracker
+from logic.chord_detector import ChordDetector
 
-# Tracking current notes being played
-current_notes = set()
-last_detected_chord = None
+# Create chord detector instance
+chord_detector = ChordDetector()
 
-def detect_chord(notes):
-    """
-    Detect common chords based on notes being played.
-    Returns chord name or None if no recognizable chord is found.
-    """
-    if len(notes) < 3:
-        return None
-        
-    # Get the root-position representation by finding the lowest note
-    if not notes:
-        return None
-        
-    # Convert to pitch classes (0-11) and sort
-    pitch_classes = sorted(n % 12 for n in notes)
-    
-    # Get unique pitch classes (remove octave duplicates)
-    unique_pitches = sorted(set(pitch_classes))
-    
-    # Define common chord types
-    chord_types = {
-        # Major triads
-        (0, 4, 7): "Major",
-        # Minor triads
-        (0, 3, 7): "Minor",
-        # Diminished triads
-        (0, 3, 6): "Diminished",
-        # Augmented triads
-        (0, 4, 8): "Augmented",
-        # Dominant 7th
-        (0, 4, 7, 10): "Dominant 7th",
-        # Major 7th
-        (0, 4, 7, 11): "Major 7th",
-        # Minor 7th
-        (0, 3, 7, 10): "Minor 7th",
-        # Suspended 4th
-        (0, 5, 7): "Sus4",
-        # Suspended 2nd
-        (0, 2, 7): "Sus2"
-    }
-    
-    # Try to find a matching chord pattern
-    for pattern, chord_name in chord_types.items():
-        # For each potential root note
-        for i in range(12):
-            # Generate the chord pattern from this root
-            chord = tuple(sorted((i + interval) % 12 for interval in pattern))
-            
-            # Check if all required notes of this chord are being played
-            if all(note in pitch_classes for note in chord) and len(chord) <= len(pitch_classes):
-                root_name = get_note_name(i + 12*4).replace("4", "")  # Middle octave without number
-                return f"{root_name} {chord_name}"
-    
-    return None
+def get_note_name(note_number):
+    """Convert MIDI note number to note name (e.g., C4, F#5)."""
+    notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+    octave = (note_number // 12) - 1
+    note = notes[note_number % 12]
+    return f"{note}{octave}"
 
 def list_midi_ports():
     """List all available MIDI input and output ports."""
@@ -76,19 +29,12 @@ def list_midi_ports():
     for i, port_name in enumerate(mido.get_output_names()):
         print(f"  {i}: {port_name}")
 
-def get_note_name(note_number):
-    """Convert MIDI note number to note name (e.g., C4, F#5)."""
-    notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
-    octave = (note_number // 12) - 1
-    note = notes[note_number % 12]
-    return f"{note}{octave}"
-
 def print_active_notes(active_notes):
     """Print a formatted line with chord and active notes."""
     # Format: (chord, exactly 20 chars) (3 spaces) (space-separated notes)
     
-    # Get chord if any
-    chord = detect_chord(active_notes)
+    # Get chord if any using the enhanced chord detector
+    chord = chord_detector.detect_chord(active_notes) if active_notes else None
     chord_str = chord if chord else "No chord"
     
     # Format chord part to exactly 20 characters
