@@ -1,6 +1,6 @@
 """
 MIDI Reader - A simple application to read MIDI input and detect chords
-with sustain functionality
+with sustain functionality and rhythm detection
 """
 import time
 import mido
@@ -9,8 +9,9 @@ import threading
 from time import time, sleep
 from logic.note_tracker import NoteTracker
 from logic.chord_detector import ChordDetector
+from logic.rhythm_detector import RhythmDetector
 
-# Create chord detector instance
+# Create detector instances
 chord_detector = ChordDetector()
 
 def get_note_name(note_number):
@@ -47,8 +48,8 @@ def print_active_notes(active_notes):
     # Combine into final output
     print(f"{chord_part}   {notes_part}")
 
-def print_midi_message(msg, note_tracker):
-    """Print MIDI message info and update note tracker."""
+def print_midi_message(msg, note_tracker, rhythm_detector):
+    """Print MIDI message info and update trackers."""
     if msg.type == 'note_on' and msg.velocity > 0:
         note_name = get_note_name(msg.note)
         velocity = msg.velocity
@@ -67,13 +68,14 @@ def print_midi_message(msg, note_tracker):
     else:
         print(f"Other MIDI message: {msg}")
     
-    # Update the note tracker with the message
+    # Update trackers with the message
     note_tracker.process_message(msg)
+    rhythm_detector.process_message(msg)
 
 def main():
     """Main function to run the MIDI reader application."""
-    print("MIDI Reader with Sustain and Chord Detection")
-    print("==========================================")
+    print("MIDI Reader with Chord Detection and Rhythm Detection")
+    print("==================================================")
     
     input_ports = mido.get_input_names()
     
@@ -93,6 +95,7 @@ def main():
     try:
         print(f"\nOpening {input_port_name} for input...")
         note_tracker = NoteTracker()
+        rhythm_detector = RhythmDetector()
         
         # Thread to monitor for note tracker updates
         def process_updates():
@@ -111,17 +114,21 @@ def main():
             
             while True:
                 for msg in inport.iter_pending():
-                    print_midi_message(msg, note_tracker)
+                    print_midi_message(msg, note_tracker, rhythm_detector)
                 sleep(0.01)
                 
     except KeyboardInterrupt:
         print("\nExiting MIDI Reader...")
         if 'note_tracker' in locals():
             note_tracker.stop()
+        if 'rhythm_detector' in locals():
+            rhythm_detector.stop()
     except Exception as e:
         print(f"\nError: {e}")
         if 'note_tracker' in locals():
             note_tracker.stop()
+        if 'rhythm_detector' in locals():
+            rhythm_detector.stop()
 
 if __name__ == "__main__":
     main()
