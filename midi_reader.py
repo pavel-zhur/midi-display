@@ -1,11 +1,13 @@
 """
 MIDI Reader - A simple application to read MIDI input and detect chords
+with sustain functionality
 """
 import time
 import mido
 from mido import Message
 import threading
 from time import time, sleep
+from logic.note_tracker import NoteTracker
 
 # Tracking current notes being played
 current_notes = set()
@@ -74,48 +76,6 @@ def list_midi_ports():
     for i, port_name in enumerate(mido.get_output_names()):
         print(f"  {i}: {port_name}")
 
-def print_midi_message(msg):
-    """Print a formatted MIDI message and detect chords."""
-    global current_notes, last_detected_chord
-    
-    # Handle note tracking for chord detection
-    if msg.type == 'note_on' and msg.velocity > 0:
-        current_notes.add(msg.note)
-        
-        # Try to detect chord after adding the note
-        chord = detect_chord(current_notes)
-        if chord and chord != last_detected_chord:
-            print(f"Chord detected: {chord}")
-            last_detected_chord = chord
-            
-    elif (msg.type == 'note_off') or (msg.type == 'note_on' and msg.velocity == 0):
-        if msg.note in current_notes:
-            current_notes.remove(msg.note)
-            
-            # If notes were released, check if chord changed
-            chord = detect_chord(current_notes)
-            if chord != last_detected_chord:
-                if chord:
-                    print(f"Chord changed to: {chord}")
-                else:
-                    print("No chord detected")
-                last_detected_chord = chord
-
-    # Original message printing logic
-    if msg.type == 'note_on' and msg.velocity > 0:
-        note_name = get_note_name(msg.note)
-        velocity = msg.velocity
-        print(f"Note ON:  {note_name} (note: {msg.note}, velocity: {velocity})")
-    elif msg.type == 'note_off' or (msg.type == 'note_on' and msg.velocity == 0):
-        note_name = get_note_name(msg.note)
-        print(f"Note OFF: {note_name} (note: {msg.note})")
-    elif msg.type == 'control_change':
-        print(f"Control change: control={msg.control}, value={msg.value}")
-    elif msg.type == 'clock':
-        pass
-    else:
-        print(f"Other MIDI message: {msg}")
-
 def get_note_name(note_number):
     """Convert MIDI note number to note name (e.g., C4, F#5)."""
     notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
@@ -123,13 +83,53 @@ def get_note_name(note_number):
     note = notes[note_number % 12]
     return f"{note}{octave}"
 
+def print_active_notes(active_notes):
+    """Print a formatted line with chord and active notes."""
+    # Format: (chord, exactly 20 chars) (3 spaces) (space-separated notes)
+    
+    # Get chord if any
+    chord = detect_chord(active_notes)
+    chord_str = chord if chord else "No chord"
+    
+    # Format chord part to exactly 20 characters
+    chord_part = chord_str[:20].ljust(20)
+    
+    # Format notes part
+    note_names = [get_note_name(note) for note in active_notes]
+    notes_part = " ".join(note_names) if note_names else "None"
+    
+    # Combine into final output
+    print(f"{chord_part}   {notes_part}")
+
+def print_midi_message(msg, note_tracker):
+    """Print MIDI message info and update note tracker."""
+    if msg.type == 'note_on' and msg.velocity > 0:
+        note_name = get_note_name(msg.note)
+        velocity = msg.velocity
+        #print(f"Note ON:  {note_name} (note: {msg.note}, velocity: {velocity})")
+    elif msg.type == 'note_off' or (msg.type == 'note_on' and msg.velocity == 0):
+        note_name = get_note_name(msg.note)
+        #print(f"Note OFF: {note_name} (note: {msg.note})")
+    elif msg.type == 'control_change':
+        if msg.control == 72:
+            status = "ON" if msg.value == 110 else "OFF"
+            print(f"Sustain {status} (control={msg.control}, value={msg.value})")
+        else:
+            print(f"Control change: control={msg.control}, value={msg.value}")
+    elif msg.type == 'clock':
+        pass
+    else:
+        print(f"Other MIDI message: {msg}")
+    
+    # Update the note tracker with the message
+    note_tracker.process_message(msg)
+
 def main():
     """Main function to run the MIDI reader application."""
-    print("MIDI Chord Detection Application")
-    print("===============================")
+    print("MIDI Reader with Sustain and Chord Detection")
+    print("==========================================")
     
     input_ports = mido.get_input_names()
-    output_ports = mido.get_output_names()
     
     if not input_ports:
         print("No MIDI input ports detected!")
@@ -146,20 +146,36 @@ def main():
     
     try:
         print(f"\nOpening {input_port_name} for input...")
+        note_tracker = NoteTracker()
+        
+        # Thread to monitor for note tracker updates
+        def process_updates():
+            while True:
+                active_notes = note_tracker.update_queue.get()
+                print_active_notes(active_notes)
+                note_tracker.update_queue.task_done()
+        
+        update_thread = threading.Thread(target=process_updates)
+        update_thread.daemon = True
+        update_thread.start()
         
         with mido.open_input(input_port_name) as inport:
             print(f"Connected. Press Ctrl+C to exit.")
-            print("Play some notes on your MIDI keyboard to detect chords...\n")
+            print("Play some notes on your MIDI keyboard...\n")
             
             while True:
                 for msg in inport.iter_pending():
-                    print_midi_message(msg)
+                    print_midi_message(msg, note_tracker)
                 sleep(0.01)
                 
     except KeyboardInterrupt:
-        print("\nExiting MIDI Chord Detection...")
+        print("\nExiting MIDI Reader...")
+        if 'note_tracker' in locals():
+            note_tracker.stop()
     except Exception as e:
         print(f"\nError: {e}")
+        if 'note_tracker' in locals():
+            note_tracker.stop()
 
 if __name__ == "__main__":
     main()
