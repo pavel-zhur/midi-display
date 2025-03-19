@@ -36,7 +36,11 @@ Address=192.168.59.2/24
 Gateway=192.168.59.1
 DNS=192.168.59.1
 ```
-
+Restart network service:
 ```
 sudo systemctl restart systemd-networkd
+```
+Enable network service auto-start:
+```
+sudo systemctl enable systemd-networkd
 ```
