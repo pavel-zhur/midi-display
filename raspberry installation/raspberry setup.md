@@ -44,3 +44,17 @@ Enable network service auto-start:
 ```
 sudo systemctl enable systemd-networkd
 ```
+
+6.
+```
+sudo raspi-config
+```
+interface -> vnc -> enable
+
+7.
+https://www.realvnc.com/en/connect/download/viewer/
+
+8.
+`vncserver-virtual -geometry 1920x1080`
+
+vnc viewer: connect to `raspberrypi:1`
